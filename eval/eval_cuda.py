@@ -1163,7 +1163,7 @@ def load_cuda_file(PATH_TO_CUDA_FILE):
 
 if __name__ == "__main__":
 
-    PATH_TO_CUDA_FILE = "/data2/jiwei/cuda_results/gpu_types/cuda_code/rtx_3090.json"
+    PATH_TO_CUDA_FILE = "YOUR_FOLDER/rtx_3090.json"
     cuda_data_folder = os.path.dirname(PATH_TO_CUDA_FILE)
 
     cuda_dict_ = load_cuda_file(PATH_TO_CUDA_FILE)
