@@ -35,7 +35,9 @@ trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a media
       <img src="assets/speedup_and_example.png" width="90%" alt="Evaluation Results">
   </picture>
 <br>
- <em><strong>Fig (left)</strong>：Average speedup across different architectures on KernelBench; <strong>Fig (right)</strong>: A showcase of `diag(A) * B` reference and CUDA-L1 implementations. The optimized implementation reduces complexity from *O(N²M)* to *O(NM)*, achieving **64×** speedup by replacing full matrix multiplication with element-wise operations.</em>
+ <p align="center">
+    <strong>Fig (left)</strong>：Average speedup across different architectures on KernelBench; <strong>Fig (right)</strong>: A showcase of <em>diag(A) * B</em> reference and CUDA-L1 implementations. The optimized implementation reduces complexity from <strong>O(N²M)</strong> to <strong>O(NM)</strong>, achieving <strong>64×</strong> speedup by replacing full matrix multiplication with element-wise operations.
+</p>
 </div>
 
 
