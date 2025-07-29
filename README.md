@@ -141,12 +141,12 @@ We employ contrastive learning with execution-time rewards, training the model t
 <tbody>
 <tr>
 <td align="center">A100 PCIe</td>
-<td align="center">3.12×</td>
+<td align="center"><strong>3.12×</strong></td>
 <td align="center">120×</td>
 <td align="center">2.25×</td>
 <td align="center">1.42×</td>
 <td align="center">1.17×</td>
-<td align="center">99.6%</td>
+<td align="center"><strong>99.6%</strong></td>
 </tr>
 <tr>
 <td align="center">H100</td>
@@ -168,7 +168,7 @@ We employ contrastive learning with execution-time rewards, training the model t
 </tr>
 <tr>
 <td align="center">L40</td>
-<td align="center">3.12×</td>
+<td align="center"><strong>3.12×</strong></td>
 <td align="center">182×</td>
 <td align="center">1.89×</td>
 <td align="center">1.31×</td>
