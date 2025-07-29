@@ -210,6 +210,9 @@ We also compare baseline methods (backboned by Deepseek-R1, OpenAI O1) with CUDA
   </picture>
 </div>
 
+##Limitations and Challenges
+
+During the training process, we found that RL is particularly susceptible to reward hacking. We've already identified quite a few hacking cases (e.g., exploiting timing measurements & caching results). If you identify any additional reward hacks in the code, we would greatly appreciate you letting us know. 
 
 ## Want to reproduce our results?
 
