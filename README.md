@@ -23,15 +23,21 @@
 
 In this paper, we introduce CUDA-L1, an automated reinforcement learning (RL) framework for CUDA optimization. The core of CUDA-L1 is a contrastive RL model, a newly-designed RL system to enhance optimization through comparative learning. 
 CUDA-L1 achieves unprecedented performance improvements on the CUDA optimization task:
-trained on NVIDIA A100, it delivers an average speedup of **×17.7** across all 250 CUDA kernels of KernelBench, with peak speedups reaching **×449**. Furthermore, the model also demonstrates excellent portability across GPU architectures, achieving average speedups of **×17.8** on H100, **×19.0** on RTX 3090, **×16.5** on L40, **×14.7** on H800, and **×13.9** on H20 despite being optimized specifically for A100. Beyond these benchmark results, CUDA-L1 demonstrates several remarkable properties:
+trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a median speedup of **x1.42** across all 250 CUDA kernels of KernelBench, with peak speedups reaching **x120**. Furthermore, the model also demonstrates portability across GPU architectures, achieving average speedups of **x3.12** (median **x1.31**) on L40, **x2.50** (median **x1.18**) on RTX 3090, **x2.39** (median **x1.32**) on H100, and **x2.37** (median **x1.34**) on H20 despite being optimized specifically for A100. Beyond these benchmark results, CUDA-L1 demonstrates several remarkable properties:
 
 - It discovers a variety of CUDA optimization techniques and learns to combine them strategically to achieve optimal performance;
 - It uncovers fundamental principles of CUDA optimization, such as the multiplicative nature of optimizations and how certain "gatekeeper" techniques must be applied first to unlock the effectiveness of others;
 - It identifies non-obvious performance bottlenecks (such as CPU-GPU synchronization dominating compute optimizations) and rejects seemingly beneficial optimizations that actually harm performance.
+
+
 <div align="center">
   <picture>
-      <img src="assets/general_result.png" width="90%" alt="Evaluation Results">
+      <img src="assets/speedup_and_example.png" width="90%" alt="Evaluation Results">
   </picture>
+<br>
+ <p align="center">
+    <strong>Fig (left)</strong>：Average speedup across different architectures on KernelBench; <strong>Fig (right)</strong>: A showcase of <em>diag(A) * B</em> reference and CUDA-L1 implementations. The optimized implementation reduces complexity from <strong>O(N²M)</strong> to <strong>O(NM)</strong>, achieving <strong>64×</strong> speedup by replacing full matrix multiplication with element-wise operations.
+</p>
 </div>
 
 
@@ -75,48 +81,47 @@ We employ contrastive learning with execution-time rewards, training the model t
 <tbody>
 <tr>
 <td align="center"><strong>All Levels</strong></td>
-<td align="center"><strong>17.7×</strong></td>
-<td align="center"><strong>449×</strong></td>
-<td align="center">7.08×</td>
-<td align="center">1.81×</td>
-<td align="center">1.22×</td>
+<td align="center"><strong>3.12×</strong></td>
+<td align="center"><strong>120×</strong></td>
+<td align="center">2.25×</td>
+<td align="center">1.42×</td>
+<td align="center">1.17×</td>
 <td align="center">249/250</td>
-<td align="center">242/250</td>
+<td align="center">240/250</td>
 </tr>
 <tr>
 <td align="center">Level 1</td>
-<td align="center">12.3×</td>
-<td align="center">166×</td>
-<td align="center">9.28×</td>
-<td align="center">1.65×</td>
-<td align="center">1.15×</td>
+<td align="center">2.78×</td>
+<td align="center">65.8×</td>
+<td align="center">1.75×</td>
+<td align="center">1.28×</td>
+<td align="center">1.12×</td>
 <td align="center">99/100</td>
-<td align="center">96/100</td>
+<td align="center">94/100</td>
 </tr>
 <tr>
 <td align="center">Level 2</td>
-<td align="center">6.39×</td>
-<td align="center">111×</td>
-<td align="center">4.42×</td>
-<td align="center">1.61×</td>
-<td align="center">1.24×</td>
+<td align="center">3.55×</td>
+<td align="center">120×</td>
+<td align="center">2.05×</td>
+<td align="center">1.39×</td>
+<td align="center">1.20×</td>
 <td align="center">100/100</td>
-<td align="center">97/100</td>
+<td align="center">98/100</td>
 </tr>
 <tr>
 <td align="center">Level 3</td>
-<td align="center">50.8×</td>
-<td align="center">449×</td>
-<td align="center">22.9×</td>
-<td align="center">2.66×</td>
-<td align="center">1.58×</td>
+<td align="center">2.96×</td>
+<td align="center">24.9×</td>
+<td align="center">2.60×</td>
+<td align="center">1.94×</td>
+<td align="center">1.42×</td>
 <td align="center">50/50</td>
-<td align="center">49/50</td>
+<td align="center">48/50</td>
 </tr>
 </tbody>
 </table>
 </div>
-
 
 #### Cross-GPU Performance
 
@@ -136,61 +141,53 @@ We employ contrastive learning with execution-time rewards, training the model t
 <tbody>
 <tr>
 <td align="center">A100 PCIe</td>
-<td align="center">17.7×</td>
-<td align="center">449×</td>
-<td align="center">7.08×</td>
-<td align="center">1.81×</td>
-<td align="center">1.22×</td>
-<td align="center">99.6%</td>
+<td align="center"><strong>3.12×</strong></td>
+<td align="center">120×</td>
+<td align="center">2.25×</td>
+<td align="center">1.42×</td>
+<td align="center">1.17×</td>
+<td align="center"><strong>99.6%</strong></td>
 </tr>
 <tr>
-<td align="center">H100 XSM</td>
-<td align="center">17.8×</td>
-<td align="center">1,001×</td>
-<td align="center">4.02×</td>
-<td align="center">1.63×</td>
-<td align="center">1.16×</td>
-<td align="center">98.4%</td>
+<td align="center">H100</td>
+<td align="center">2.39×</td>
+<td align="center">81.9×</td>
+<td align="center">1.76×</td>
+<td align="center">1.32×</td>
+<td align="center">1.09×</td>
+<td align="center">100%</td>
 </tr>
 <tr>
 <td align="center">RTX 3090</td>
-<td align="center">19.0×</td>
-<td align="center">611×</td>
-<td align="center">4.41×</td>
-<td align="center">1.44×</td>
-<td align="center">1.11×</td>
-<td align="center">98.4%</td>
+<td align="center">2.50×</td>
+<td align="center">114×</td>
+<td align="center">1.57×</td>
+<td align="center">1.18×</td>
+<td align="center">1.03×</td>
+<td align="center">96.8%</td>
 </tr>
 <tr>
 <td align="center">L40</td>
-<td align="center">16.5×</td>
-<td align="center">365×</td>
-<td align="center">6.17×</td>
-<td align="center">1.61×</td>
-<td align="center">1.15×</td>
-<td align="center">98.8%</td>
-</tr>
-<tr>
-<td align="center">H800 XSM</td>
-<td align="center">14.7×</td>
-<td align="center">433×</td>
-<td align="center">4.80×</td>
-<td align="center">1.57×</td>
-<td align="center">1.16×</td>
-<td align="center">99.6%</td>
+<td align="center"><strong>3.12×</strong></td>
+<td align="center">182×</td>
+<td align="center">1.89×</td>
+<td align="center">1.31×</td>
+<td align="center">1.08×</td>
+<td align="center">99.2%</td>
 </tr>
 <tr>
 <td align="center">H20</td>
-<td align="center">13.9×</td>
-<td align="center">412×</td>
-<td align="center">4.76×</td>
-<td align="center">1.54×</td>
-<td align="center">1.16×</td>
-<td align="center">99.2%</td>
+<td align="center">2.37×</td>
+<td align="center">63.7×</td>
+<td align="center">1.81×</td>
+<td align="center">1.34×</td>
+<td align="center">1.11×</td>
+<td align="center">98.8%</td>
 </tr>
 </tbody>
 </table>
 </div>
+
 
 <sup>
 • CUDA-L1 was trained on A100 GPUs but shows excellent transfer to other architectures
@@ -199,16 +196,6 @@ We employ contrastive learning with execution-time rewards, training the model t
 </sup>
 
 
-#### Compare with Baseline Methods
-
-We also compare baseline methods (backboned by Deepseek-R1, OpenAI O1) with CUDA-L1 on KernelBench. 
-
-
-<div align="center">
-  <picture>
-      <img src="assets/general_result_plot_img.png" width="90%" alt="CUDA-L1: Improving CUDA Optimization via Contrastive Reinforcement Learning">
-  </picture>
-</div>
 
 ##Limitations and Challenges
 
