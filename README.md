@@ -28,10 +28,13 @@ trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a media
 - It discovers a variety of CUDA optimization techniques and learns to combine them strategically to achieve optimal performance;
 - It uncovers fundamental principles of CUDA optimization, such as the multiplicative nature of optimizations and how certain "gatekeeper" techniques must be applied first to unlock the effectiveness of others;
 - It identifies non-obvious performance bottlenecks (such as CPU-GPU synchronization dominating compute optimizations) and rejects seemingly beneficial optimizations that actually harm performance.
+
+
 <div align="center">
   <picture>
       <img src="assets/speedup_and_example.png" width="90%" alt="Evaluation Results">
   </picture>
+ <em>Left：Average speedup across different architectures on KernelBench; Right: A showcase of `diag(A) * B` reference and CUDA-L1 implementations. The optimized implementation reduces complexity from *O(N²M)* to *O(NM)*, achieving **64×** speedup by replacing full matrix multiplication with element-wise operations.</em>
 </div>
 
 
