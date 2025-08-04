@@ -46,6 +46,7 @@ trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a media
 - [x] Remove caching ✅
 - [ ] Compare with torch.compile
 - [ ] Compare with pytorch eager + cuda graph
+- [ ] Compare with custom torch CUDA/cuDNN backend flags
 - [ ] 5090/4090
 
 
