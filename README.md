@@ -41,9 +41,6 @@ trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a media
 </div>
 
 
-## 🥳 NUpdates
-* **[17 Jul, 2025]** The repository is created and we release the first version.
-
 ## To-do List
 - [x] Fix KernelBench evaluations with proper stream timing synchronization
 - [ ] Remove caching
