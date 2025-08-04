@@ -42,8 +42,8 @@ trained on NVIDIA A100, it delivers an average speedup of **x3.12** with a media
 
 
 ## To-do List
-- [x] Fix KernelBench evaluations with proper stream timing synchronization
-- [ ] Remove caching
+- [x] Fix KernelBench evaluations with proper stream timing synchronization ✅
+- [x] Remove caching ✅
 - [ ] Compare with torch.compile
 - [ ] Compare with pytorch eager + cuda graph
 
@@ -208,6 +208,7 @@ We employ contrastive learning with execution-time rewards, training the model t
 
 We provide CUDA code snippets optimized by CUDA-L1 in the `optimized_cuda_code` folder, with separate versions for each GPU device. For example, to reproduce our results on H100 XSM, download `./optimized_cuda_code/h100_xsm.json` and run each code snippet on your H100 device.
 
+If custom_code is None, it means the RL either failed to generate code faster than the reference code or simply copied the reference code during generation.
 
 ## Limitations and Challenges
 
