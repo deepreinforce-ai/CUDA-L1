@@ -552,19 +552,34 @@ def eval_kernel_against_ref(
     verbose: bool = False,
     build_dir: os.PathLike = None,
     device: torch.device = None, # have to run on GPU
-    info_string: str = ""
-) -> tuple[float | None, str]:
+    info_string: str = "",
+    original_eval_setup: str = "vanilla"
+) -> tuple[float | None, float | None, str]:
     """
-    Evaluate the custom kernel against the original model
+    Evaluate the custom kernel against the original model (vanilla or torch.compile)
 
-    num_correct_trials: number of trials to initialize different random inputs; correctness pass only if all trials pass
-    num_perf_trials: run the evalutation many times to take the average
-    device: GPU (cuda) device to run the evalutation on
+    Args:
+        original_model_src: Source code for the original model
+        custom_model_src: Source code for the custom model
+        seed_num: Seed for reproducible results
+        num_perf_trials: Number of performance trials to run
+        verbose: Whether to print detailed progress
+        build_dir: Directory for CUDA extensions
+        device: GPU device to run evaluation on
+        info_string: Information string for consistent logging
+        original_eval_setup: Evaluation setup for original model ("vanilla", "torch_compile", or "torch_compile_reduce_overhead")
+
     
     Returns:
-        tuple[float | None, str]: (score, message) where score is original_model_time / custom_model_time 
-                                  (higher is better, >1.0 means speedup), or None if failed
+        tuple[float | None, float | None, str]: (score, total_elapsed_time, message) where:
+            - score: reference_model_time / custom_model_time (higher is better, >1.0 means speedup), or None if failed
+            - total_elapsed_time: Total time taken for evaluation in seconds, or None if failed
+            - message: Success message or error description
     """
+    # Validate original_eval_setup parameter
+    if original_eval_setup not in ["vanilla", "torch_compile", "torch_compile_reduce_overhead"]:
+        raise ValueError(f"original_eval_setup must be 'vanilla', 'torch_compile', or 'torch_compile_reduce_overhead', got '{original_eval_setup}'")
+    
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
     torch.set_printoptions(
@@ -590,7 +605,9 @@ def eval_kernel_against_ref(
     context = {}
 
     if verbose:
-        print(f"{info_prefix}[Eval] Start Evalulation! on device: {device}")
+        print(f"{info_prefix}[Eval] Start Evaluation ({original_eval_setup})! on device: {device}")
+        if original_eval_setup == "torch_compile":
+            print(f"{info_prefix}[Eval] Compile mode: default")
         print(f"{info_prefix}[Eval] Loading Original Model")
 
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
@@ -606,14 +623,50 @@ def eval_kernel_against_ref(
         set_seed(seed_num)  # set seed for reproducible weights
         original_model = Model(*init_inputs)
         assert hasattr(original_model, "forward")
-        if verbose:
-            print(f"{info_prefix}[Eval] Original Model Loaded")
+        
+        # Conditionally apply torch.compile to the original model
+        if original_eval_setup == "torch_compile":
+            if verbose:
+                print(f"{info_prefix}[Eval] Applying torch.compile to original model (mode: default)")
+            
+            try:
+                # Apply torch.compile with default mode
+                original_model = torch.compile(original_model, mode="default")
+                if verbose:
+                    print(f"{info_prefix}[Eval] Original Model compiled (warmup will happen later)")
+                    
+            except Exception as e:
+                print(f"{info_prefix}Failed to compile original model with torch.compile: {e}")
+                return None, None, f"Failed to compile original model with torch.compile: {e}"
+        elif original_eval_setup == "torch_compile_reduce_overhead":
+            if verbose:
+                print(f"{info_prefix}[Eval] Applying torch.compile to original model (mode: reduce-overhead)")
+            
+            try:
+                # Apply torch.compile with reduce-overhead mode for CUDA graphs
+                original_model = torch.compile(original_model, mode="reduce-overhead")
+                
+                if verbose:
+                    print(f"{info_prefix}[Eval] Original Model compiled with reduce-overhead mode (warmup will happen later)")
+                    
+            except Exception as e:
+                print(f"{info_prefix}Failed to compile original model with torch.compile (reduce-overhead): {e}")
+                return None, None, f"Failed to compile original model with torch.compile (reduce-overhead): {e}"
+        else:
+            if verbose:
+                print(f"{info_prefix}[Eval] Original Model Loaded")
+                
     if verbose:
         print(f"{info_prefix}[Eval] Loading and Compiling New Model with Custom CUDA Kernel")
 
     metadata = {}  # for storing result metadata
     metadata["hardware"] = torch.cuda.get_device_name(device=device)
     metadata["device"] = str(device)  # for debugging
+    metadata["original_eval_setup"] = original_eval_setup
+    if original_eval_setup == "torch_compile":
+        metadata["compile_mode"] = "default"
+    elif original_eval_setup == "torch_compile_reduce_overhead":
+        metadata["compile_mode"] = "reduce-overhead"
 
     # this is where compilation happens
     try:
@@ -629,14 +682,14 @@ def eval_kernel_against_ref(
         if ModelNew is None:
             print(f"{info_prefix}ERROR: load_custom_model returned None - check the model source code")
             print(f"{info_prefix}The custom model source must define: ModelNew = YourModelClass")
-            return None, "ModelNew is None"
+            return None, None, "ModelNew is None"
             
         torch.cuda.synchronize(device=device)  # not sure if this is too much
     except Exception as e:
         print(
             f"{info_prefix}Failed to compile custom CUDA kernel: Record as compilation failure. \nError: {e}"
         )
-        return None, "Failed to compile custom CUDA kernel"
+        return None, None, "Failed to compile custom CUDA kernel"
 
     # at this point we passed compilation
     try:
@@ -651,27 +704,47 @@ def eval_kernel_against_ref(
         print(
             f"{info_prefix}Failed to load custom CUDA kernel; Compiled but not able to run, count as runtime error. \nError: {e}"
         )
-        return None, "Failed to load custom CUDA kernel with New Model"
+        return None, None, "Failed to load custom CUDA kernel with New Model"
 
     # Handle case where num_correct_trials is 0 (skip correctness check)
         
     if verbose:
-        print(f"{info_prefix}[Eval] Measuring Performance")
+        reference_type = "Compiled (torch.compile)" if original_eval_setup == "torch_compile" else "Original (vanilla)"
+        print(f"{info_prefix}[Eval] Measuring Performance ({reference_type} vs Custom)")
 
     # Move models to the correct device for performance measurement
     original_model = original_model.to(device)
     custom_model = custom_model.to(device)
 
-    original_times = []
+    reference_times = []  # Will store either vanilla or compiled times
     custom_times = []
     
-    # Warmup
-    for _ in range(3):
-        inputs = get_inputs()
-        inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
-        original_model(*inputs)
-        custom_model(*inputs)
-        torch.cuda.synchronize(device=device)
+    # === WARMUP PHASE ===
+    if verbose:
+        print(f"{info_prefix}[Eval] Starting warmup phase for both models...")
+    
+    try:
+        warmup_inputs = get_inputs()
+        warmup_inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in warmup_inputs]
+        
+        # Warm up both models (3 iterations each)
+        for i in range(3):
+            with torch.no_grad():
+                # Warmup original model (especially important for torch.compile)
+                _ = original_model(*warmup_inputs)
+                
+                # Warmup custom model (eliminates CUDA kernel initialization overhead)
+                _ = custom_model(*warmup_inputs)
+                
+                torch.cuda.synchronize(device=device)
+        
+        if verbose:
+            model_types = f"original ({original_eval_setup}) and custom"
+            print(f"{info_prefix}[Eval] Warmup completed for {model_types} models")
+            
+    except Exception as e:
+        print(f"{info_prefix}Warning: Model warmup failed: {e}")
+        # Continue anyway - warmup failure shouldn't block evaluation
     
     if verbose:
         print(f"{info_prefix}[Profiling] Using device: {device} {torch.cuda.get_device_name(device)}, trials: {num_perf_trials}")
@@ -683,7 +756,7 @@ def eval_kernel_against_ref(
             inputs = get_inputs()
             inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]            
             # Randomize execution order to eliminate systematic bias
-            run_original_first = random.choice([True, False])
+            run_reference_first = random.choice([True, False])
             
             # IMPORTANT: Detect model streams to ensure accurate timing
             current_stream = torch.cuda.current_stream(device=device)
@@ -724,27 +797,27 @@ def eval_kernel_against_ref(
             custom_model_streams = find_model_streams(custom_model)
             # Use current stream for timing, but track all model streams for synchronization
             # This ensures we capture all work regardless of which streams the model uses
-            original_model_stream = current_stream
+            reference_model_stream = current_stream
             custom_model_stream = current_stream
             
             # Debug info for stream detection
             if verbose and custom_model_streams:
                 print(f"{info_prefix}[Stream Detection] Found {len(custom_model_streams)} CUDA streams in custom model")
             
-            if run_original_first:
-                # Time original model first
+            if run_reference_first:
+                # Time reference model first
                 start_event = torch.cuda.Event(enable_timing=True)
                 end_event = torch.cuda.Event(enable_timing=True)
                 
-                with torch.cuda.stream(original_model_stream):
-                    start_event.record(original_model_stream)
+                with torch.cuda.stream(reference_model_stream):
+                    start_event.record(reference_model_stream)
                     original_model(*inputs)
                     
                     # Wait for all model streams to complete before recording end event                    
-                    end_event.record(original_model_stream)
+                    end_event.record(reference_model_stream)
                 
                 torch.cuda.synchronize(device=device)
-                original_time = start_event.elapsed_time(end_event)
+                reference_time = start_event.elapsed_time(end_event)
                 
                 # Time custom model second
                 start_event = torch.cuda.Event(enable_timing=True)
@@ -785,40 +858,47 @@ def eval_kernel_against_ref(
                 start_event = torch.cuda.Event(enable_timing=True)
                 end_event = torch.cuda.Event(enable_timing=True)
                 
-                with torch.cuda.stream(original_model_stream):
-                    start_event.record(original_model_stream)
+                with torch.cuda.stream(reference_model_stream):
+                    start_event.record(reference_model_stream)
                     original_model(*inputs)
                     
                     # Wait for all model streams to complete before recording end event                    
-                    end_event.record(original_model_stream)
+                    end_event.record(reference_model_stream)
                 
                 torch.cuda.synchronize(device=device)
-                original_time = start_event.elapsed_time(end_event)
+                reference_time = start_event.elapsed_time(end_event)
             
-            original_times.append(original_time)
+            reference_times.append(reference_time)
             custom_times.append(custom_time)
     t2 = time.time()
 
     # Calculate averages and score
-    avg_original_time = sum(original_times) / len(original_times)
+    avg_reference_time = sum(reference_times) / len(reference_times)
     avg_custom_time = sum(custom_times) / len(custom_times)
-    score = avg_original_time / avg_custom_time
-    total_elapsed_time = (sum(original_times) + sum(custom_times)) / 1000.0  # Convert from milliseconds to seconds
+    score = avg_reference_time / avg_custom_time
+    total_elapsed_time = (sum(reference_times) + sum(custom_times)) / 1000.0  # Convert from milliseconds to seconds
+    
     if verbose:
-        print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Original avg: {avg_original_time:.3f}ms")
+        reference_type = "Compiled (torch.compile)" if original_eval_setup == "torch_compile" else "Original (vanilla)"
+        print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] {reference_type} avg: {avg_reference_time:.3f}ms")
         print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Custom avg: {avg_custom_time:.3f}ms") 
-        print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Score (original/custom): {score:.3f}")
+        print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Score (reference/custom): {score:.3f}")
+        
         if score > 1.0:
             speedup = score
-            print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Speedup: {speedup:.2f}x faster")
+            vs_type = "torch.compile" if original_eval_setup == "torch_compile" else "original model"
+            print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Custom kernel is {speedup:.2f}x faster than {vs_type}")
         elif score < 1.0:
             slowdown = 1.0 / score
-            print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Slowdown: {slowdown:.2f}x slower")
+            vs_type = "torch.compile" if original_eval_setup == "torch_compile" else "original model"
+            print(f"{info_prefix}[Results {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Custom kernel is {slowdown:.2f}x slower than {vs_type}")
         else:
-            print(f"{info_prefix}[Results] Same performance")
+            vs_type = "torch.compile" if original_eval_setup == "torch_compile" else "original model"
+            print(f"{info_prefix}[Results] Same performance as {vs_type}")
 
     graceful_eval_cleanup(context, device)
-    return score, total_elapsed_time, avg_original_time, avg_custom_time, "Success"
+    return score, total_elapsed_time, "Success"
+
 
 
 ################################################################################
@@ -892,8 +972,11 @@ def eval_pipeline(
     max_time: float = None,
     use_process_isolation: bool = False,
     info_string = "",
-    valid_bar = 0.15
+    original_eval_setup: str = "vanilla"
 ):
+    if original_eval_setup not in ["vanilla", "torch_compile", "torch_compile_reduce_overhead"]:
+        raise ValueError(f"original_eval_setup must be 'vanilla', 'torch_compile', or 'torch_compile_reduce_overhead', got '{original_eval_setup}'")
+
     pst_tz = timezone(timedelta(hours=-8))
     
     # Format info_string for consistent display
@@ -1021,7 +1104,7 @@ def eval_pipeline(
         print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: performance evaluation, trial {trial + 1}/{global_n_trials}")
         # Run single evaluation
         time1 = time.time()
-        score, gpu_execution_time, avg_original_time, avg_custom_time, error_msg = eval_kernel_against_ref(
+        score, gpu_execution_time, error_msg = eval_kernel_against_ref(
             original_model_src=original_model_src,
             custom_model_src=custom_model_src,
             seed_num=42 + trial,  # Different seed for each trial
@@ -1029,7 +1112,8 @@ def eval_pipeline(
             verbose=False,  # Keep individual trials quiet unless overall verbose
             build_dir=None,
             device=device,
-            info_string=info_string
+            info_string=info_string,
+            original_eval_setup=original_eval_setup
         )
         list_gpu_execution_time.append(gpu_execution_time)
         if score is None:
@@ -1057,8 +1141,6 @@ def eval_pipeline(
             "time": datetime.now(timezone(timedelta(hours=-8))).strftime('%Y-%m-%d %H:%M:%S'),
             "gpu_execution_time": gpu_execution_time,
             "ave_gpu_execution_time": gpu_execution_time / num_perf_trials,
-            "avg_original_time": avg_original_time,
-            "avg_custom_time": avg_custom_time,
             "done": False,
             "duration": time2 - time1,
             "error": False
@@ -1163,7 +1245,7 @@ def load_cuda_file(PATH_TO_CUDA_FILE):
 
 if __name__ == "__main__":
 
-    PATH_TO_CUDA_FILE = "YOUR_FOLDER/rtx_3090.json"
+    PATH_TO_CUDA_FILE = "/home/jiwei/code/evolve/cuda_running_time/optimized_cuda_code/rtx_3090.json"
     cuda_data_folder = os.path.dirname(PATH_TO_CUDA_FILE)
 
     cuda_dict_ = load_cuda_file(PATH_TO_CUDA_FILE)
@@ -1182,7 +1264,9 @@ if __name__ == "__main__":
         gpu_index=0,
         verbose=False,
         log_path=output_path,
-        max_time=1800
+        max_time=1800,
+        original_eval_setup="vanilla"
     )
+    #original_eval_setup should take vanilla, torch_compile, torch_compile_reduce_overhead
     print(f"log_path: {output_path}")
     print(f"log_path: {output_path}")
