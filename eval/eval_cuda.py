@@ -352,16 +352,17 @@ def graceful_eval_cleanup(curr_context: Dict, device: torch.device):
 
 
 def check_kernel_correctness(
+    warmup_src:str,
     original_model_src: str,
     custom_model_src: str,
     seed_num: int = 42,
     num_correct_trials: int = 5,
     verbose: bool = False,
-    build_dir: Optional[os.PathLike] = None,
-    device: Optional[torch.device] = None,
+    build_dir: os.PathLike = None,
+    device: torch.device = None,
     timeout: float = 300.0,
     info_string: str = ""
-) -> Tuple[bool, str, Dict]:
+) -> tuple[bool, str, dict]:
     """
     Check correctness of custom CUDA kernel against reference implementation.
     
@@ -387,8 +388,8 @@ def check_kernel_correctness(
     if not torch.cuda.is_available():
         return False, "CUDA is not available", {}
     
-    # Define pst_tz at the beginning of the function
-    pst_tz = timezone(timedelta(hours=-8))
+    # Define beijing_tz at the beginning of the function
+    beijing_tz = timezone(timedelta(hours=8))
     
     # Format info_string for consistent display
     info_prefix = f"[{info_string}] " if info_string else ""
@@ -411,11 +412,30 @@ def check_kernel_correctness(
         print(f"{info_prefix}[Correctness] Running {num_correct_trials} trials")
     
     # Load original model
-    context_original = {}
+    context_warmup = {}
     if verbose:
         print(f"{info_prefix}[Correctness] Loading original model...")
+    WarmupModel, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        warmup_src, context_warmup
+    )
+
+    set_seed(seed_num)
+    init_inputs = get_init_inputs()
+    init_inputs = [
+        x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs
+    ]
         
+    with torch.no_grad():
+        set_seed(seed_num)
+        warmup_model = WarmupModel(*init_inputs).to(device)
+        inputs = get_inputs()
+        inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
+        warmup_model(*inputs)
+        torch.cuda.synchronize(device=device)
+
+    
     try:
+        context_original = {}
         Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
             original_model_src, context_original, timeout=timeout, info_string=info_string
         )
@@ -472,7 +492,7 @@ def check_kernel_correctness(
             trial_seed = trial_seeds[trial]
             
             # if verbose:
-            #     print(f"{info_prefix}[Correctness {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] Trial {trial + 1}/{num_correct_trials} (seed: {trial_seed})")
+            #     print(f"{info_prefix}[Correctness {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] Trial {trial + 1}/{num_correct_trials} (seed: {trial_seed})")
             
             try:
                 # Generate inputs for this trial
@@ -508,7 +528,7 @@ def check_kernel_correctness(
                     metadata["max_difference"].append(f"{max_diff:.6f}")
                     metadata["avg_difference"].append(f"{avg_diff:.6f}")
                     metadata["trials_failed"] += 1
-                    
+                    print(metadata)
                     error_msg = f"Value mismatch to the original model"
                     # if verbose:
                     #     print(f"{info_prefix}[Correctness] ❌ {error_msg}")
@@ -524,13 +544,13 @@ def check_kernel_correctness(
                 metadata["trials_failed"] += 1
                 error_msg = f"Runtime error in trial {trial + 1}: {e}"
                 if verbose:
-                    print(f"{info_prefix}[Correctness {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] ❌ {error_msg}")
+                    print(f"{info_prefix}[Correctness {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] ❌ {error_msg}")
                 return False, error_msg, metadata
     
     # Final validation
     if pass_count == num_correct_trials:
         if verbose:
-            print(f"{info_prefix}[Correctness {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] ✅ All {pass_count}/{num_correct_trials} trials passed!")
+            print(f"{info_prefix}[Correctness {datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] ✅ All {pass_count}/{num_correct_trials} trials passed!")
         
         # Cleanup
         graceful_eval_cleanup(context_original, device)
@@ -539,12 +559,11 @@ def check_kernel_correctness(
         return True, "", metadata
     else:
         error_msg = f"Only {pass_count}/{num_correct_trials} trials passed"
-        if verbose:
-            print(f"{info_prefix}[Correctness {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] ❌ {error_msg}")
         return False, error_msg, metadata
 
 
 def eval_kernel_against_ref(
+    warmup_src: str,
     original_model_src: str,
     custom_model_src: str,
     seed_num: int = 42,
@@ -567,7 +586,7 @@ def eval_kernel_against_ref(
         build_dir: Directory for CUDA extensions
         device: GPU device to run evaluation on
         info_string: Information string for consistent logging
-        original_eval_setup: Evaluation setup for original model ("vanilla", "torch_compile", or "torch_compile_reduce_overhead")
+        original_eval_setup: Evaluation setup for original model ("vanilla", "torch_compile", or "CUDA_graphs")
 
     
     Returns:
@@ -577,8 +596,8 @@ def eval_kernel_against_ref(
             - message: Success message or error description
     """
     # Validate original_eval_setup parameter
-    if original_eval_setup not in ["vanilla", "torch_compile", "torch_compile_reduce_overhead"]:
-        raise ValueError(f"original_eval_setup must be 'vanilla', 'torch_compile', or 'torch_compile_reduce_overhead', got '{original_eval_setup}'")
+    if original_eval_setup not in ["vanilla", "torch_compile", "torch_compile_reduce_overhead","cudnn","cuda_graph"]:
+        raise ValueError(f"original_eval_setup must be 'vanilla', 'torch_compile', 'torch_compile_reduce_overhead', 'cudnn', or 'cuda_graph', got '{original_eval_setup}'")
     
     # TODO: check device is busy
     assert torch.cuda.is_available(), "CUDA is not available, cannot run Eval"
@@ -609,6 +628,23 @@ def eval_kernel_against_ref(
         if original_eval_setup == "torch_compile":
             print(f"{info_prefix}[Eval] Compile mode: default")
         print(f"{info_prefix}[Eval] Loading Original Model")
+
+    WarmupModel, get_init_inputs, get_inputs = load_original_model_and_inputs(
+        warmup_src, context, info_string=info_string
+    )
+    set_seed(seed_num)  # set seed for reproducible input
+    init_inputs = get_init_inputs()
+    init_inputs = [
+        x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs
+    ]
+    with torch.no_grad():
+        set_seed(seed_num)  # set seed for reproducible weights
+        warmup_model = WarmupModel(*init_inputs)
+        warmup_model = warmup_model.to(device)
+        inputs = get_inputs()
+        inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
+        warmup_model(*inputs)
+        torch.cuda.synchronize(device=device)
 
     Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
         original_model_src, context, info_string=info_string
@@ -901,6 +937,8 @@ def eval_kernel_against_ref(
 
 
 
+
+
 ################################################################################
 # Performance Eval
 ################################################################################
@@ -961,6 +999,7 @@ def get_available_gpus():
 
 
 def eval_pipeline(
+    warmup_src: str,
     original_model_src: str,
     custom_model_src: str,
     num_correct_trials: int,
@@ -972,22 +1011,20 @@ def eval_pipeline(
     max_time: float = None,
     use_process_isolation: bool = False,
     info_string = "",
-    original_eval_setup: str = "vanilla"
+    original_eval_setup="",
 ):
-    if original_eval_setup not in ["vanilla", "torch_compile", "torch_compile_reduce_overhead"]:
-        raise ValueError(f"original_eval_setup must be 'vanilla', 'torch_compile', or 'torch_compile_reduce_overhead', got '{original_eval_setup}'")
-
-    pst_tz = timezone(timedelta(hours=-8))
+    assert original_eval_setup!=""
+    tz = timezone(timedelta(hours=0))
     
     # Format info_string for consistent display
     info_prefix = f"[{info_string}] " if info_string else ""
 
-    print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] median_comparison_pipeline start")
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] median_comparison_pipeline start")
     if log_path is not None:
         log_dir = os.path.dirname(log_path)
         os.makedirs(log_dir, exist_ok=True)
-    print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] Writing log to {log_path}")
-    current_time = datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] Writing log to {log_path}")
+    current_time = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
 
     with open(log_path, "w") as write_log:
         print(f"in log_path open and write {log_path}")
@@ -996,7 +1033,7 @@ def eval_pipeline(
         write_log.flush()
 
     # step 1: check whether the model can be executed and compiled
-    print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] step 1: check whether the model can be executed and compiled")
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 1: check whether the model can be executed and compiled")
     context = {}
     success_original, error_msg, execution_time = execute_model_with_timeout(
         model_src=original_model_src,
@@ -1039,20 +1076,22 @@ def eval_pipeline(
         log_dict_ = {
             "info_string": info_string,
             "info": "stage1:Compile Success",
-            "time": datetime.now(timezone(timedelta(hours=-8))).strftime('%Y-%m-%d %H:%M:%S'),
+            "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
             "error": False,
             "done": False
         }
         with open(log_path, "a") as write_log:
             write_log.write(json.dumps(log_dict_) + "\n")
             write_log.flush()
-
-    # step 2: correctness check
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 2: preliminary speed check")
     device = torch.device(f'cuda:{gpu_index}')
     time1 = time.time()
-    print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] step 2: correctness check")
+    
+    # step 3: correctness check
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: correctness check")
     time1 = time.time()
     correctness_passed, error_msg, correctness_metadata = check_kernel_correctness(
+        warmup_src=warmup_src,
         original_model_src=original_model_src,
         custom_model_src=custom_model_src,
         num_correct_trials=num_correct_trials,
@@ -1076,7 +1115,7 @@ def eval_pipeline(
         log_dict_ = {
             "info_string": info_string,
             "info": "stage3:Correctness Check Success",
-            "time": datetime.now(timezone(timedelta(hours=-8))).strftime('%Y-%m-%d %H:%M:%S'),
+            "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
             "error": False,
             "done": False,
             "duration": time2 - time1,
@@ -1088,7 +1127,7 @@ def eval_pipeline(
     log_dict_ = {
         "info_string": info_string,
         "info": "stage4:Performance Evaluation",
-        "time": datetime.now(timezone(timedelta(hours=-8))).strftime('%Y-%m-%d %H:%M:%S'),
+        "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
         "error": False,
         "done": False
     }
@@ -1099,12 +1138,13 @@ def eval_pipeline(
     list_gpu_execution_time = []
     # Run global_n_trials sequential evaluations
     start_time = time.time()
-    print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: performance evaluation")
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 4: performance evaluation")
     for trial in range(global_n_trials):
-        print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: performance evaluation, trial {trial + 1}/{global_n_trials}")
+        print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 4: performance evaluation, trial {trial + 1}/{global_n_trials}")
         # Run single evaluation
         time1 = time.time()
         score, gpu_execution_time, error_msg = eval_kernel_against_ref(
+            warmup_src=warmup_src,
             original_model_src=original_model_src,
             custom_model_src=custom_model_src,
             seed_num=42 + trial,  # Different seed for each trial
@@ -1138,7 +1178,7 @@ def eval_pipeline(
             "trial": trial,
             "gpu_index": gpu_index,
             "score": score,
-            "time": datetime.now(timezone(timedelta(hours=-8))).strftime('%Y-%m-%d %H:%M:%S'),
+            "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
             "gpu_execution_time": gpu_execution_time,
             "ave_gpu_execution_time": gpu_execution_time / num_perf_trials,
             "done": False,
@@ -1149,11 +1189,14 @@ def eval_pipeline(
             write_log.write(json.dumps(log_dict_) + "\n")
             write_log.flush()
         scores.append(score)
+        if score is not None and score < 0.3:
+            break
         
-        print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] Trial {trial + 1}: {score:.4f} at gpu {gpu_index}")
+        # if verbose:
+        print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] Trial {trial + 1}: {score:.4f} at gpu {gpu_index}")
         
     if len(scores) == 0:
-        print(f"{info_prefix}[Score {datetime.now(pst_tz).strftime('%Y-%m-%d %H:%M:%S')}] ❌ No trials completed successfully")
+        print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] ❌ No trials completed successfully")
         log_dict_empty = {
             "info_string": info_string,
             "error": True,
@@ -1166,12 +1209,7 @@ def eval_pipeline(
             write_log.flush()
         return None, "No trials completed successfully"
     
-    # Calculate median score and apply custom rounding
-    # raw_median = float(np.median(scores))
-    raw_mean = float(np.mean(scores))
-    mean_score = round(raw_mean, 3)
-
-    median_score = float(np.median(scores))
+    mean_score = float(np.mean(scores))
 
     std = float(np.std(scores))
     
@@ -1183,8 +1221,7 @@ def eval_pipeline(
     n_all_trials = num_perf_trials*global_n_trials
     log_dict_ = {
         "info_string": info_string,
-        "median_score": median_score,
-        "mean_score": mean_score,
+        "score": mean_score,
         "rounded_scores": rounded_scores,
         "scores_sorted": sorted(scores),
         "completed_trials": len(scores),
@@ -1195,78 +1232,95 @@ def eval_pipeline(
         "ave_gpu_execution_time": sum(list_gpu_execution_time)/n_all_trials, 
         "error": False,
         "done": True,
-        "scores": [round(score, 4) for score in scores],
-        "std": std
+        "scores": [round(ss, 4) for ss in scores],
+        "std": std,
     }
     with open(log_path, "a") as write_log:
         write_log.write(json.dumps(log_dict_) + "\n")
         write_log.flush()
     
-    if verbose:
-        mean_score = float(np.mean(scores))
-        std_score = float(np.std(scores))
-        min_score = float(np.min(scores))
-        max_score = float(np.max(scores))
-        
-        trials_completed = len(scores)
-        print(f"\n{info_prefix}[Score] 📊 Results from {trials_completed}/{global_n_trials} trials:")
-        print(f"{info_prefix}  - Total time: {total_elapsed_time:.2f}s")
-        if max_time is not None and total_elapsed_time >= max_time:
-            print(f"{info_prefix}  - Status: TIMEOUT (reached {max_time}s limit)")
-        print(f"{info_prefix}  - Scores: {[f'{s:.4f}' for s in scores]}")
-        print(f"{info_prefix}  - Raw Median: {raw_median:.4f}")
-        print(f"{info_prefix}  - Final Median: {median_score:.2f}")
-        print(f"{info_prefix}  - Mean:   {mean_score:.4f}")
-        print(f"{info_prefix}  - Std:    {std_score:.4f}")
-        print(f"{info_prefix}  - Range:  [{min_score:.4f}, {max_score:.4f}]")
-        
-        # Stability assessment
-        cv = (std_score / mean_score) * 100 if mean_score > 0 else 0
-        print(f"{info_prefix}  - CV:     {cv:.2f}% {'(stable)' if cv < 1.0 else '(variable)' if cv < 5.0 else '(unstable)'}")
-    
-    return median_score, rounded_scores
+    return 0
 
 
 def load_cuda_file(PATH_TO_CUDA_FILE):
     if not os.path.exists(PATH_TO_CUDA_FILE):
         raise Exception(f"{PATH_TO_CUDA_FILE} not found")
+    cuda_dict_= {}
     with open(PATH_TO_CUDA_FILE, "r") as f:
-        ref_cuda_file = json.load(f)
-    cuda_dict_ = {}
-    for level, level_items in ref_cuda_file.items():
-        cuda_dict_[int(level)] = {}
-        for item in level_items:
-            task_id = int(item["task_id"])
-            ref_code = item["ref_code"]
-            custom_code = item["custom_code"]
-            cuda_dict_[int(level)][task_id] = (ref_code, custom_code)
+        for line in f:
+            dict_ = json.loads(line)
+            level_id = dict_["level_id"]
+            task_id = dict_["task_id"]
+            ref_code = dict_["ref_code"]
+            custom_code = dict_["custom_code"]
+            cuda_graph_code = dict_["cuda_graph_code"]
+            cudnn_code = dict_["cudnn_code"]
+            if level_id not in cuda_dict_:
+                cuda_dict_[level_id] = {}
+            cuda_dict_[level_id][task_id]  = {
+                "ref_code": ref_code,
+                "custom_code": custom_code,
+                "cuda_graph_code": cuda_graph_code,
+                "cudnn_code": cudnn_code
+            }
     return cuda_dict_
 
-
-if __name__ == "__main__":
-
-    PATH_TO_CUDA_FILE = "/home/jiwei/code/evolve/cuda_running_time/optimized_cuda_code/rtx_3090.json"
-    cuda_data_folder = os.path.dirname(PATH_TO_CUDA_FILE)
+def eval():
+    YOUR_HOME_FOLDER = "/data2/jiwei/cuda_results/CUDA-L1/optimized_cuda_code"
+    PATH_TO_CUDA_FILE = os.path.join(YOUR_HOME_FOLDER, "3090.json")
+    output_path = os.path.join(YOUR_HOME_FOLDER, "log.json")
 
     cuda_dict_ = load_cuda_file(PATH_TO_CUDA_FILE)
     level_id = 3
-    task_id = 42
-    ref_code, custom_code = cuda_dict_[level_id][task_id]
-    print(custom_code)
-    output_path = os.path.join(cuda_data_folder, f"{level_id}_{task_id}_eval.json")
-    print(f"eval results output to {output_path}")
+    task_id = 35
+    current_dict = cuda_dict_[level_id][task_id]
+    original_eval_setup="vanilla"
+    # original_eval_setup="torch_compile"
+    # original_eval_setup="torch_compile_reduce_overhead"
+    # original_eval_setup = "cuda_graph"
+    # original_eval_setup = "cudnn"
+
+    # original_eval_setup can take value of 
+    # 1. vanilla, which compares the speed with custom_code with ref_code
+    # 2. torch_compile, which compares the speed with custom_code with ref_code compiled with torch.compile
+    # 3. torch_compile_reduce_overhead, which compares the speed with custom_code with ref_code compiled with torch.compile and reduce overhead
+    # 4. cuda_graph, which compares the speed with custom_code with ref_code with cuda_graph modification
+    # 5. cudnn, which compares the speed with custom_code with ref_code with cudnn modification
+    warmup_code, ref_code, custom_code, cuda_graph_code, cudnn_code = current_dict["ref_code"], current_dict["ref_code"], current_dict["custom_code"], current_dict["cuda_graph_code"], current_dict["cudnn_code"]
+    # for whatever eval_setup, we use ref_code for warmup
+    if custom_code == None:
+        print(f"CUDA-L1 does not yield performance boost on this task on this gpu architecture.")
+        return 0
+    if original_eval_setup == "cuda_graph" and cuda_graph_code == None:
+        print(f"We were unable to generate valid CUDA graph code for this task. Your request will be skipped.")
+        return 0
+    if original_eval_setup == "cudnn" and cudnn_code == None:
+        print(f"We were unable to generate valid CUDNN code for this task. Your request will be skipped.")
+        return 0
+    if original_eval_setup == "cuda_graph":
+        original_model_src = cuda_graph_code
+    elif original_eval_setup == "cudnn":
+        original_model_src = cudnn_code
+    else:
+        original_model_src = ref_code
+
     eval_pipeline(
-        original_model_src=ref_code,
+        warmup_src=warmup_code,
+        original_model_src=original_model_src,
         custom_model_src=custom_code,
-        num_correct_trials=100,
-        num_perf_trials=100,
+        num_correct_trials=10,
+        num_perf_trials=10,
         global_n_trials=7,
         gpu_index=0,
         verbose=False,
         log_path=output_path,
         max_time=1800,
-        original_eval_setup="vanilla"
+        original_eval_setup=original_eval_setup
     )
     #original_eval_setup should take vanilla, torch_compile, torch_compile_reduce_overhead
     print(f"log_path: {output_path}")
     print(f"log_path: {output_path}")
+
+
+if __name__ == "__main__":
+    eval()
