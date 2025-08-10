@@ -246,6 +246,7 @@ Each line in the release file contains a JSON object with the following fields:
   "score_cuda_graph": 1.566,
   "score_cudnn": 1.801
 }
+```
 
 ## Limitations and Challenges
 
