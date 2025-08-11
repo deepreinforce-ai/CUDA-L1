@@ -53,6 +53,8 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 <div align="center">
 
+**Table: Performance comparison across different configurations on KernelBench on A100.**
+
 <table>
 
 <thead>
