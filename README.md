@@ -185,7 +185,109 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 • Success and Speedup indicate the number of successful benchmarks out of the total for each level
 </sup><br/>
 
+</table>
 
+</div>
+
+<div align="center">
+
+**Table: Mean speedup across different configurations and GPU devices.**
+
+<table>
+
+<thead>
+
+<tr>
+
+<th align="center">Configuration</th>
+
+<th align="center">A100</th>
+
+<th align="center">3090</th>
+
+<th align="center">H100</th>
+
+<th align="center">H20</th>
+
+<th align="center">L40</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td align="center"><em>Default</em></td>
+
+<td align="center"><strong>3.12×</strong></td>
+
+<td align="center">2.51×</td>
+
+<td align="center"><strong>3.85×</strong></td>
+
+<td align="center">2.38×</td>
+
+<td align="center">3.13×</td>
+
+</tr>
+
+<tr>
+
+<td align="center"><em>Torch Compile</em></td>
+
+<td align="center">2.77×</td>
+
+<td align="center">2.58×</td>
+
+<td align="center">2.74×</td>
+
+<td align="center"><strong>2.89×</strong></td>
+
+<td align="center">2.85×</td>
+
+</tr>
+
+<tr>
+
+<td align="center"><em>Torch Compile RO</em></td>
+
+<td align="center">2.88×</td>
+
+<td align="center">2.61×</td>
+
+<td align="center">2.77×</td>
+
+<td align="center">2.82×</td>
+
+<td align="center"><strong>2.89×</strong></td>
+
+</tr>
+
+<tr>
+
+<td align="center"><em>CUDA Graph</em></td>
+
+<td align="center">2.81×</td>
+
+<td align="center"><strong>3.34×</strong></td>
+
+<td align="center">2.23×</td>
+
+<td align="center">2.20×</td>
+
+<td align="center"><strong>3.98×</strong></td>
+
+</tr>
+
+
+
+</tbody>
+
+</table>
+
+</div>
 
 ## ❓ How to reproduce the results?
 
