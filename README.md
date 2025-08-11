@@ -85,7 +85,7 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 <tr>
 
-<td rowspan="4" align="center"><em>Default</em></td>
+<td align="center"><em>Default</em></td>
 
 <td align="center"><strong>All</strong></td>
 
@@ -107,67 +107,7 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 <tr>
 
-<td align="center">Level 1</td>
-
-<td align="center">2.78×</td>
-
-<td align="center">65.8×</td>
-
-<td align="center">1.75×</td>
-
-<td align="center">1.28×</td>
-
-<td align="center">1.12×</td>
-
-<td align="center">99/100</td>
-
-<td align="center">80/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 2</td>
-
-<td align="center">3.55×</td>
-
-<td align="center">120×</td>
-
-<td align="center">2.05×</td>
-
-<td align="center">1.39×</td>
-
-<td align="center">1.20×</td>
-
-<td align="center">100/100</td>
-
-<td align="center">98/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 3</td>
-
-<td align="center">2.96×</td>
-
-<td align="center">24.9×</td>
-
-<td align="center">2.60×</td>
-
-<td align="center">1.94×</td>
-
-<td align="center">1.42×</td>
-
-<td align="center">50/50</td>
-
-<td align="center">48/50</td>
-
-</tr>
-
-<tr style="border-top: 1px solid #ddd;">
-
-<td rowspan="4" align="center"><em>Torch Compile</em></td>
+<td align="center"><em>Torch Compile</em></td>
 
 <td align="center"><strong>All</strong></td>
 
@@ -189,67 +129,7 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 <tr>
 
-<td align="center">Level 1</td>
-
-<td align="center">3.04×</td>
-
-<td align="center">59.7×</td>
-
-<td align="center">2.71×</td>
-
-<td align="center">1.99×</td>
-
-<td align="center">1.41×</td>
-
-<td align="center">99/100</td>
-
-<td align="center">89/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 2</td>
-
-<td align="center">2.91×</td>
-
-<td align="center">69.0×</td>
-
-<td align="center">1.99×</td>
-
-<td align="center">1.55×</td>
-
-<td align="center">1.10×</td>
-
-<td align="center">100/100</td>
-
-<td align="center">78/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 3</td>
-
-<td align="center">1.98×</td>
-
-<td align="center">8.57×</td>
-
-<td align="center">2.28×</td>
-
-<td align="center">1.68×</td>
-
-<td align="center">1.00×</td>
-
-<td align="center">50/50</td>
-
-<td align="center">36/50</td>
-
-</tr>
-
-<tr style="border-top: 1px solid #ddd;">
-
-<td rowspan="4" align="center"><em>Torch Compile RO</em></td>
+<td align="center"><em>Torch Compile RO</em></td>
 
 <td align="center"><strong>All</strong></td>
 
@@ -271,67 +151,7 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 <tr>
 
-<td align="center">Level 1</td>
-
-<td align="center">3.38×</td>
-
-<td align="center">55.3×</td>
-
-<td align="center">3.02×</td>
-
-<td align="center">2.29×</td>
-
-<td align="center">1.61×</td>
-
-<td align="center">99/100</td>
-
-<td align="center">90/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 2</td>
-
-<td align="center">3.00×</td>
-
-<td align="center">80.1×</td>
-
-<td align="center">2.06×</td>
-
-<td align="center">1.54×</td>
-
-<td align="center">1.10×</td>
-
-<td align="center">100/100</td>
-
-<td align="center">79/100</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 3</td>
-
-<td align="center">1.62×</td>
-
-<td align="center">8.67×</td>
-
-<td align="center">1.76×</td>
-
-<td align="center">1.13×</td>
-
-<td align="center">0.991×</td>
-
-<td align="center">50/50</td>
-
-<td align="center">31/50</td>
-
-</tr>
-
-<tr style="border-top: 1px solid #ddd;">
-
-<td rowspan="4" align="center"><em>CUDA Graph</em></td>
+<td align="center"><em>CUDA Graph</em></td>
 
 <td align="center"><strong>All</strong></td>
 
@@ -351,66 +171,6 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 
 </tr>
 
-<tr>
-
-<td align="center">Level 1</td>
-
-<td align="center">3.18×</td>
-
-<td align="center">59.6×</td>
-
-<td align="center">2.09×</td>
-
-<td align="center">1.38×</td>
-
-<td align="center">1.04×</td>
-
-<td align="center">99/100</td>
-
-<td align="center">68/88</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 2</td>
-
-<td align="center">2.84×</td>
-
-<td align="center">97.9×</td>
-
-<td align="center">1.55×</td>
-
-<td align="center">1.08×</td>
-
-<td align="center">0.932×</td>
-
-<td align="center">100/100</td>
-
-<td align="center">53/94</td>
-
-</tr>
-
-<tr>
-
-<td align="center">Level 3</td>
-
-<td align="center">2.06×</td>
-
-<td align="center">24.6×</td>
-
-<td align="center">1.74×</td>
-
-<td align="center">1.08×</td>
-
-<td align="center">0.887×</td>
-
-<td align="center">50/50</td>
-
-<td align="center">26/47</td>
-
-</tr>
-
 </tbody>
 
 </table>
@@ -422,13 +182,6 @@ Our evaluation is conducted on the KernelBench [dataset](https://github.com/Scal
 </sup><br/><sup>
 • Success and Speedup indicate the number of successful benchmarks out of the total for each level
 </sup><br/>
-
-
-<sup>
-• CUDA-L1 was trained on A100 GPUs but shows excellent transfer to other architectures
-</sup><br/><sup>
-• Level 3 tasks (complex ML operations) show the highest speedups, making CUDA-L1 especially valuable for real-world applications
-</sup>
 
 
 
