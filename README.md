@@ -12,12 +12,12 @@
 </p>
 
 
+<h1>
+<p align="left">
+  <a href="">CUDA-L1: Improving CUDA Optimization via Contrastive Reinforcement Learning</a>
+</p>
+</h1>
 
-<div align="center">
-  <picture>
-      <img src="assets/ip_title.png" width="100%" alt="CUDA-L1: Improving CUDA Optimization via Contrastive Reinforcement Learning">
-  </picture>
-</div>
 
 ## 🥳 Introduction
 
