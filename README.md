@@ -8,14 +8,12 @@
 
 
 <p align="center">
-<a href="https://github.com/deepreinforce-ai/CUDA-L1/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue.svg" height="36" style="vertical-align:bottom"/></a> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>🏠&nbsp;&nbsp;<a href="https://deepreinforce-ai.github.io/cudal1_blog/">Project Page</a></b> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>📄&nbsp;&nbsp;<a href="https://arxiv.org/abs/2507.14111">Paper</a></b> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>🔥&nbsp;&nbsp;<a href="https://deep-reinforce.com/cuda_l1">Demo</a></b>
+<a href="https://github.com/deepreinforce-ai/CUDA-L1/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue.svg" height="30" style="vertical-align:bottom"/></a> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>🏠&nbsp;&nbsp;<a href="https://deepreinforce-ai.github.io/cudal1_blog/">Project Page</a></b> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>📄&nbsp;&nbsp;<a href="https://arxiv.org/abs/2507.14111">Paper</a></b> &nbsp;&nbsp;&nbsp; | &nbsp;&nbsp;&nbsp; <b>🔥&nbsp;&nbsp;<a href="https://deep-reinforce.com/cuda_l1">Demo</a></b>
 </p>
 
 
-<h1>
-<p align="left">
-  <a href="">CUDA-L1: Improving CUDA Optimization via Contrastive Reinforcement Learning</a>
-</p>
+<h1 align="center">
+  CUDA-L1: Improving CUDA Optimization via Contrastive Reinforcement Learning
 </h1>
 
 
