@@ -62,6 +62,98 @@ REPO_TOP_PATH = os.path.abspath(
 KERNEL_BENCH_PATH = os.path.join(REPO_TOP_PATH, "KernelBench")
 
 
+def validate_no_lazy_evaluation(warmup_src, custom_model_src, device, seed_num=42, build_dir=None, timeout=300.0, info_string=""):
+    """
+    Validate that model produces real tensors, not lazy containers.
+    Handles single tensor or tuple/list of tensors.
+    
+    Args:
+        warmup_src: Source code for warmup model (to get input generation functions)
+        custom_model_src: Source code string for the custom model to validate
+        device: Device to run on
+        seed_num: Seed for reproducible input generation
+        build_dir: Directory for CUDA extensions
+        timeout: Timeout for model loading in seconds
+        info_string: Prefix for logging
+        
+    Returns (is_valid, error_message)
+    """
+    try:
+        # Load warmup model to get input generation functions
+        context_warmup = {}
+        WarmupModel, get_init_inputs, get_inputs = load_original_model_and_inputs(
+            warmup_src, context_warmup
+        )
+        
+        # Load custom model
+        context_custom = {}
+        os.environ["TORCH_USE_CUDA_DSA"] = "1"  # Enable device-side assertions
+        Model = load_custom_model(custom_model_src, context_custom, build_dir, timeout=timeout, info_string=info_string)
+        if Model is None:
+            return False, "Failed to load custom model"
+        
+        # Initialize model
+        set_seed(seed_num)
+        init_inputs = get_init_inputs()
+        init_inputs = [
+            x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in init_inputs
+        ]
+        
+        with torch.no_grad():
+            set_seed(seed_num)
+            model = Model(*init_inputs).to(device)
+            
+            # Generate inputs
+            set_seed(seed_num)
+            inputs = get_inputs()
+            inputs = [x.cuda(device=device) if isinstance(x, torch.Tensor) else x for x in inputs]
+            
+            # Run model
+            output = model(*inputs)
+            torch.cuda.synchronize(device=device)
+            
+            # Handle multiple outputs
+            outputs_to_check = [output] if isinstance(output, torch.Tensor) else output
+            if isinstance(output, (tuple, list)):
+                outputs_to_check = output
+            
+            for idx, out in enumerate(outputs_to_check):
+                prefix = f"Output[{idx}]" if len(outputs_to_check) > 1 else "Output"
+                
+                # Check 1: Must be a tensor
+                if not isinstance(out, torch.Tensor):
+                    return False, f"{prefix} is not a tensor: {type(out)}"
+                
+                # Check 2: Must be standard torch.Tensor, not a subclass
+                if type(out).__name__ not in ['Tensor', 'Parameter']:
+                    return False, f"{prefix} is {type(out).__name__}, not standard torch.Tensor"
+                
+                # Check 3: Must be on correct device
+                if out.device != device:
+                    return False, f"{prefix} on wrong device: {out.device} (expected {device})"
+                
+                # Check 4: Must have allocated storage
+                try:
+                    storage_size = out.untyped_storage().size()
+                    if storage_size == 0:
+                        return False, f"{prefix} has no allocated storage (likely lazy)"
+                except Exception as e:
+                    return False, f"{prefix} cannot access storage: {e}"
+                
+                # Check 5: Storage pointer must be valid
+                try:
+                    ptr = out.data_ptr()
+                    if ptr == 0:
+                        return False, f"{prefix} storage pointer is null (likely lazy)"
+                except Exception as e:
+                    return False, f"{prefix} cannot access data pointer: {e}"
+        
+        return True, ""
+        
+    except Exception as e:
+        return False, f"Error during validation: {e}"
+
+
 def execute_model_with_timeout(
     model_src: str, 
     context: Dict, 
@@ -1083,9 +1175,44 @@ def eval_pipeline(
         with open(log_path, "a") as write_log:
             write_log.write(json.dumps(log_dict_) + "\n")
             write_log.flush()
-    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 2: preliminary speed check")
+
+
     device = torch.device(f'cuda:{gpu_index}')
-    time1 = time.time()
+    # step 2: lazyness check
+    print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: lazyness check")
+    pass_lazyness_check, error_msg = validate_no_lazy_evaluation(
+        warmup_src=warmup_src,
+        custom_model_src=custom_model_src,
+        device=device,
+        info_string=info_string
+    )
+    if not pass_lazyness_check:
+        print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: lazyness check failed: {error_msg}")
+        log_dict_ = {
+            "info_string": info_string,
+            "info": "stage2:Lazyness Check Failed",
+            "error_msg": error_msg,
+            "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
+            "error": True,
+            "done": True
+        }
+        with open(log_path, "a") as write_log:
+            write_log.write(json.dumps(log_dict_) + "\n")
+            write_log.flush()
+        return None, error_msg
+    else:
+        print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: lazyness check passed")
+        log_dict_ = {
+            "info_string": info_string,
+            "info": "stage2:Lazyness Check Success",
+            "time": datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S'),
+            "error": False,
+            "done": False
+        }
+        with open(log_path, "a") as write_log:
+            write_log.write(json.dumps(log_dict_) + "\n")
+            write_log.flush()
+
     
     # step 3: correctness check
     print(f"{info_prefix}[Score {datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')}] step 3: correctness check")
@@ -1266,13 +1393,13 @@ def load_cuda_file(PATH_TO_CUDA_FILE):
     return cuda_dict_
 
 def eval():
-    YOUR_HOME_FOLDER = "/data2/jiwei/cuda_results/CUDA-L1/optimized_cuda_code"
+    YOUR_HOME_FOLDER = ""
     PATH_TO_CUDA_FILE = os.path.join(YOUR_HOME_FOLDER, "3090.json")
     output_path = os.path.join(YOUR_HOME_FOLDER, "log.json")
 
     cuda_dict_ = load_cuda_file(PATH_TO_CUDA_FILE)
-    level_id = 3
-    task_id = 35
+    level_id = 1
+    task_id = 9
     current_dict = cuda_dict_[level_id][task_id]
     original_eval_setup="vanilla"
     # original_eval_setup="torch_compile"
@@ -1288,6 +1415,7 @@ def eval():
     # 5. cudnn, which compares the speed with custom_code with ref_code with cudnn modification
     warmup_code, ref_code, custom_code, cuda_graph_code, cudnn_code = current_dict["ref_code"], current_dict["ref_code"], current_dict["custom_code"], current_dict["cuda_graph_code"], current_dict["cudnn_code"]
     # for whatever eval_setup, we use ref_code for warmup
+    
     if custom_code == None:
         print(f"CUDA-L1 does not yield performance boost on this task on this gpu architecture.")
         return 0
